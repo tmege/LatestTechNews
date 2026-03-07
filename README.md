@@ -1,24 +1,47 @@
 # LatestTechNews
 
-Automated tech news aggregator that fetches, classifies, summarizes and posts the best daily tech news to Discord.
+Automated tech news aggregator that fetches, classifies, summarizes and posts the best daily tech news to Discord — with AI-powered summaries and a relevance-scored daily digest.
 
 ## How It Works
 
 ```
-RSS Feeds (10 curated sources)
-        ↓
-  Spam filtering
-        ↓
-  Deduplication (title similarity)
-        ↓
-  Classification (keyword matching)
-        ↓
-  AI Summarization (Ollama, local)
-        ↓
-  Discord Webhooks (3 channels)
+                    CRON 1 (every 4h): main.py
+                    ========================
+                    RSS Feeds (16 sources)
+                            |
+                      Spam filtering
+                            |
+                    Deduplication + coverage counting
+                            |
+                      Paywall detection
+                            |
+                    Classification (keywords)
+                            |
+                    AI Summarization (Ollama)
+                            |
+                    Discord (3 category channels)
+                            |
+                    Score & store articles
+                            |
+                    .scored_articles.json
+                            |
+                    CRON 2 (daily at 20:00): resume.py
+                    ==================================
+                    Load top 20 by relevance score
+                            |
+                    Generate condensed digest (Ollama)
+                            |
+                    Discord (#daily-resume)
 ```
 
-Articles are fetched from curated RSS feeds, filtered for spam/promo content, deduplicated, classified into one of three categories, optionally summarized by a local LLM (Ollama), and posted to dedicated Discord channels.
+## Dual Cron Architecture
+
+| Cron | Schedule | Script | Purpose |
+|------|----------|--------|---------|
+| **Cron 1** | Every 4 hours | `main.py` | Fetch, classify, summarize, post to category channels, score & store |
+| **Cron 2** | Daily at 20:00 | `resume.py` | Read scored articles, pick top 20, generate digest, post to résumé channel |
+
+This separation ensures the daily digest reflects a full day of coverage with the most relevant articles ranked by a composite score.
 
 ## Discord Channels
 
@@ -27,34 +50,63 @@ Articles are fetched from curated RSS feeds, filtered for spam/promo content, de
 | `#ai-machine-learning` | AI, LLMs, robotics, generative AI, OpenAI, Anthropic, DeepMind | Purple |
 | `#finance-crypto` | Crypto, blockchain, fintech, funding rounds, IPOs, regulation | Green |
 | `#tech-hardware` | Hardware, Big Tech, cybersecurity, semiconductors, gadgets | Blue |
+| `#daily-resume` | Top 20 most relevant articles of the day (scored digest) | Red |
+
+## Relevance Scoring
+
+The daily digest doesn't just pick the most recent articles — it ranks them by **relevance score**, a weighted composite of real engagement signals:
+
+```
+score = 0.35 * coverage       # how many sources covered the same story
+      + 0.25 * hn_engagement  # Hacker News points (extracted from RSS)
+      + 0.20 * keyword_match  # keyword strength from classifier
+      + 0.10 * credibility    # source tier (MIT=1.0, CoinDesk=0.6)
+      + 0.10 * recency        # exponential decay over 24h
+```
+
+| Signal | Weight | Source | Rationale |
+|--------|:------:|--------|-----------|
+| **Coverage count** | 35% | Deduplication phase | If 4+ sources cover the same story, it's major news |
+| **HN engagement** | 25% | Hacker News RSS | Points reflect tech community interest |
+| **Keyword strength** | 20% | Classifier | More keyword matches = stronger topic signal |
+| **Source credibility** | 10% | Config (MBFC ratings) | Tier 1 sources weighted higher |
+| **Recency** | 10% | Publication date | Newer articles get a slight boost |
+
+Articles with empty summaries (typically from paywalled sources) are automatically excluded from the digest.
 
 ## Sourcing Strategy
 
-All sources have been independently evaluated for credibility using [Media Bias/Fact Check](https://mediabiasfactcheck.com/) ratings and industry reputation.
+All sources have been independently evaluated for credibility using [Media Bias/Fact Check](https://mediabiasfactcheck.com/) ratings and industry reputation. Sources scoring below 6/10 are excluded entirely.
 
-### Tier 1 — Highest Credibility (9+/10)
+### Tier 1 — Highest Credibility (8.5+/10)
 
-| Source | Score | RSS Feed | Notes |
+| Source | Score | Category | Notes |
 |---|:-:|---|---|
-| MIT Technology Review | 9.5 | `technologyreview.com/feed/` | Published since 1899. MBFC: Very High factual reporting. |
-| Ars Technica | 9.0 | `feeds.arstechnica.com/arstechnica/index` | MBFC: Least Biased. Technically deep, expert-level reporting. |
-| Wired | 8.5 | `wired.com/feed/rss` | MBFC: High factual reporting. Strong investigative journalism. |
-| BleepingComputer | 8.5 | `bleepingcomputer.com/feed/` | Leading cybersecurity news. 20+ years of trusted reporting. |
+| MIT Technology Review | 9.5 | AI/ML | Published since 1899. MBFC: Very High factual reporting. |
+| Ars Technica | 9.0 | Tech | MBFC: Least Biased. Technically deep, expert-level reporting. |
+| Wired | 8.5 | Tech | MBFC: High factual reporting. Strong investigative journalism. |
+| BleepingComputer | 8.5 | Tech | Leading cybersecurity news. 20+ years of trusted reporting. |
+| Tom's Hardware | 8.5 | Tech | MBFC: High factual reporting. Hardware reviews and benchmarks since 1996. |
+| OpenAI Blog | 8.5 | AI/ML | Official primary source for OpenAI announcements and research. |
 
 ### Tier 2 — High Credibility (7.5+/10)
 
-| Source | Score | RSS Feed | Notes |
+| Source | Score | Category | Notes |
 |---|:-:|---|---|
-| The Verge | 8.0 | `theverge.com/rss/index.xml` | MBFC: High factual reporting. Consumer tech focus. |
-| TechCrunch | 7.5 | `techcrunch.com/feed/` | MBFC: High factual reporting. Best for startup/VC breaking news. |
-| VentureBeat | 7.5 | `venturebeat.com/category/ai/feed/` | Strong AI/enterprise coverage. Center bias rating. |
+| The Verge | 8.0 | Tech | MBFC: High factual reporting. Consumer tech focus. |
+| KDnuggets | 8.0 | AI/ML | Leading data science and ML publication since 1993. |
+| TechCrunch | 7.5 | Tech/Finance | MBFC: High factual reporting. Best for startup/VC breaking news. |
+| VentureBeat | 7.5 | AI/ML | Strong AI/enterprise coverage. Center bias rating. |
+| MarkTechPost | 7.5 | AI/ML | AI research news and ML paper breakdowns. 2M+ community. |
+| Cointelegraph | 7.5 | Finance | One of the largest crypto media outlets. Daily coverage. |
+| Decrypt | 7.5 | Finance | Crypto and Web3 news. Clear editorial/opinion separation. |
 
 ### Tier 3 — Moderate (6-7/10, used with caution)
 
-| Source | Score | RSS Feed | Notes |
+| Source | Score | Category | Notes |
 |---|:-:|---|---|
-| Hacker News | 7.0 | `hnrss.org/frontpage` | Community-curated aggregator. Quality depends on linked source. |
-| CoinDesk | 6.0 | `coindesk.com/arc/outboundfeeds/rss/` | Best crypto coverage but owned by Bullish (crypto exchange). |
+| Hacker News | 7.0 | Tech | Community-curated aggregator. Quality depends on linked source. |
+| CoinDesk | 6.0 | Finance | Best crypto coverage but owned by Bullish (crypto exchange). |
 
 ### Excluded Sources
 
@@ -74,9 +126,9 @@ Articles are classified using keyword matching against title + summary:
 
 Articles are automatically filtered out if their title or summary matches promotional patterns: coupons, promo codes, discounts, deals, sponsored content.
 
-### Deduplication
+### Deduplication & Coverage Counting
 
-When the same story is covered by multiple sources, duplicates are removed using title similarity (SequenceMatcher, threshold: 0.6). The most recent version is kept.
+When the same story is covered by multiple sources, duplicates are detected using title similarity (SequenceMatcher, threshold: 0.6). Instead of simply discarding duplicates, the system counts how many sources covered each story and records which sources reported it. This **coverage count** is the strongest signal in the relevance scoring formula — a story covered by 4+ sources is almost certainly important.
 
 ## Tech Stack
 
@@ -107,8 +159,8 @@ ollama pull llama3.1   # download the model (~4.7 GB)
 
 In your Discord server:
 
-1. **Server Settings** → **Integrations** → **Webhooks**
-2. Create 3 webhooks, one per channel (`#ai-machine-learning`, `#finance-crypto`, `#tech-hardware`)
+1. **Server Settings** > **Integrations** > **Webhooks**
+2. Create 4 webhooks, one per channel (`#ai-machine-learning`, `#finance-crypto`, `#tech-hardware`, `#daily-resume`)
 3. Copy each webhook URL
 
 ```bash
@@ -116,30 +168,21 @@ cp .env.example .env
 # Edit .env with your webhook URLs
 ```
 
-### 4. Run manually
-
-From the project directory:
+### 4. Run
 
 ```bash
-cd /Users/pab7o/Dev/LatestTechNews/LatestTechNews-repo
+# === CRON 1: Fetch, classify, post & score ===
+python3 main.py                        # full run
+python3 main.py --dry-run              # test without posting
+python3 main.py --no-summary           # skip Ollama
+python3 main.py --hours 48 -v          # last 48h, debug
 
-# Full run with AI summaries
-python3 main.py
-
-# Test without posting to Discord
-python3 main.py --dry-run
-
-# Fast mode without AI summaries
-python3 main.py --no-summary
-
-# Fetch articles from the last 48 hours
-python3 main.py --hours 48
-
-# Debug logging
-python3 main.py -v
-
-# Combine flags
-python3 main.py --dry-run --no-summary --hours 12 -v
+# === CRON 2: Daily digest ===
+python3 resume.py                      # post top 20 digest
+python3 resume.py --dry-run            # preview digest
+python3 resume.py --top 10             # top 10 only
+python3 resume.py --hours 12           # last 12h only
+python3 resume.py --no-summary -v      # bullet list, debug
 ```
 
 ### 5. Automate with cron
@@ -150,25 +193,30 @@ crontab -e
 
 Add:
 
-```
-0 8 * * * cd /path/to/LatestTechNews-repo && /usr/bin/python3 main.py >> /tmp/technews.log 2>&1
+```cron
+# Fetch & post every 4 hours
+0 */4 * * * cd /path/to/LatestTechNews-repo && /usr/bin/python3 main.py >> /tmp/technews.log 2>&1
+
+# Daily digest at 20:00 (end of day for max coverage)
+0 20 * * * cd /path/to/LatestTechNews-repo && /usr/bin/python3 resume.py >> /tmp/technews-resume.log 2>&1
 ```
 
-This runs every day at 08:00. Logs are written to `/tmp/technews.log`.
-
-Make sure Ollama is running (`ollama serve`) or add it to your Mac login items (**System Settings → General → Login Items**) for automatic startup.
+Make sure Ollama is running (`ollama serve`) or add it to your Mac login items (**System Settings > General > Login Items**) for automatic startup.
 
 ## Project Structure
 
 ```
 LatestTechNews-repo/
-├── main.py           # Entry point, orchestrates the pipeline
-├── config.py         # Configuration (feeds, keywords, webhooks)
-├── feeds.py          # RSS fetching, spam filtering, HTML cleanup
-├── classifier.py     # Keyword-based article classification
-├── dedup.py          # Title similarity deduplication
-├── summarizer.py     # Ollama-powered article summarization
-├── discord.py        # Discord embed formatting and webhook delivery
+├── main.py           # Cron 1: fetch, classify, summarize, post, score
+├── resume.py         # Cron 2: daily digest from scored articles
+├── config.py         # Configuration (feeds, keywords, webhooks, credibility)
+├── feeds.py          # RSS fetching, spam filtering, HN engagement extraction
+├── classifier.py     # Keyword-based classification (exposes keyword_score)
+├── dedup.py          # Title similarity dedup + coverage counting
+├── summarizer.py     # Ollama-powered summarization + digest generation
+├── scoring.py        # Relevance scoring engine + JSON storage
+├── discord.py        # Discord formatting, rate limiting, webhook delivery
+├── history.py        # Posted-article tracking (7-day retention)
 ├── requirements.txt  # Python dependencies
 ├── .env.example      # Environment variable template
 └── .gitignore

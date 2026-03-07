@@ -3,16 +3,22 @@
 import re
 import logging
 import feedparser
+import requests
 from datetime import datetime, timezone, timedelta
 from dateutil import parser as dateparser
 from config import RSS_FEEDS
 
 log = logging.getLogger("technews")
 
+_FEED_TIMEOUT = 30  # seconds
+_FEED_MAX_SIZE = 5 * 1024 * 1024  # 5 MB
+
 # Spam / promo filter
 _SPAM_PATTERNS = [
     r"coupon", r"promo code", r"discount", r"% off", r"\$\d+ off",
     r"save up to", r"deal of the day", r"best deals", r"sponsored",
+    r"\bbest\b.{0,20}\b\d{4}\b",  # "Best ... 2026" buyer guides
+    r"buying guide", r"our pick", r"top \d+ best",
 ]
 _SPAM_RE = re.compile("|".join(_SPAM_PATTERNS), re.IGNORECASE)
 _HTML_TAG_RE = re.compile(r"<[^>]+>")
@@ -23,9 +29,74 @@ def _strip_html(text: str) -> str:
     return _HTML_TAG_RE.sub("", text).strip()
 
 
+def sanitize_for_discord(text: str) -> str:
+    """Strip Discord mention triggers and markdown from untrusted text."""
+    text = text.replace("@everyone", "@\u200beveryone")
+    text = text.replace("@here", "@\u200bhere")
+    for char in ("*", "_", "~", "|", "`", ">"):
+        text = text.replace(char, "")
+    return text
+
+
 def _is_spam(title: str, summary: str) -> bool:
     """Return True if an article looks like spam/promo content."""
     return bool(_SPAM_RE.search(f"{title} {summary}"))
+
+
+# Hacker News metadata lines to strip from summaries
+_HN_NOISE_RE = re.compile(
+    r"(Article URL:\s*\S+\s*|Comments URL:\s*\S+\s*|Points:\s*\d+\s*|Comments:\s*\d+\s*)",
+    re.IGNORECASE,
+)
+
+
+_HN_POINTS_RE = re.compile(r"Points:\s*(\d+)", re.IGNORECASE)
+_HN_COMMENTS_RE = re.compile(r"Comments:\s*(\d+)", re.IGNORECASE)
+
+
+def _extract_hn_engagement(summary: str) -> tuple[int, int]:
+    """Extract HN points and comment count from summary before cleanup."""
+    points_m = _HN_POINTS_RE.search(summary)
+    comments_m = _HN_COMMENTS_RE.search(summary)
+    return (
+        int(points_m.group(1)) if points_m else 0,
+        int(comments_m.group(1)) if comments_m else 0,
+    )
+
+
+def _clean_summary(summary: str) -> str:
+    """Remove Hacker News metadata and other noise from summaries."""
+    summary = _HN_NOISE_RE.sub("", summary).strip()
+    # Collapse multiple whitespace / newlines
+    summary = re.sub(r"\s+", " ", summary).strip()
+    return summary
+
+
+def _extract_image(entry) -> str:
+    """Try to extract an image URL from an RSS entry."""
+    # media:content or media:thumbnail
+    media = entry.get("media_content", [])
+    for m in media:
+        url = m.get("url", "")
+        if url and ("image" in m.get("type", "image")):
+            return url
+
+    media_thumb = entry.get("media_thumbnail", [])
+    if media_thumb:
+        return media_thumb[0].get("url", "")
+
+    # Enclosures (common in Atom feeds)
+    for enc in entry.get("enclosures", []):
+        if "image" in enc.get("type", ""):
+            return enc.get("href", "") or enc.get("url", "")
+
+    # Fallback: extract first <img src="..."> from summary HTML
+    raw_summary = entry.get("summary", "")
+    img_match = re.search(r'<img[^>]+src=["\']([^"\']+)["\']', raw_summary)
+    if img_match:
+        return img_match.group(1)
+
+    return ""
 
 
 def fetch_articles(hours: int = 24) -> list[dict]:
@@ -38,7 +109,13 @@ def fetch_articles(hours: int = 24) -> list[dict]:
 
     for feed_url in RSS_FEEDS:
         try:
-            feed = feedparser.parse(feed_url)
+            resp = requests.get(feed_url, timeout=_FEED_TIMEOUT)
+            resp.raise_for_status()
+            if len(resp.content) > _FEED_MAX_SIZE:
+                log.warning("Feed too large (%d bytes), skipping: %s",
+                            len(resp.content), feed_url)
+                continue
+            feed = feedparser.parse(resp.content)
         except Exception:
             log.warning("Failed to fetch %s", feed_url, exc_info=True)
             continue
@@ -61,14 +138,21 @@ def fetch_articles(hours: int = 24) -> list[dict]:
             if published < cutoff:
                 continue
 
-            title = entry.get("title", "").strip()
+            raw_summary_text = _strip_html(entry.get("summary", ""))
+            hn_points, hn_comments = _extract_hn_engagement(raw_summary_text)
+
+            title = sanitize_for_discord(entry.get("title", "").strip())
             link = entry.get("link", "").strip()
-            summary = _strip_html(entry.get("summary", ""))
+            summary = sanitize_for_discord(_clean_summary(raw_summary_text))
 
             if not title or not link:
                 continue
+            if not link.startswith(("https://", "http://")):
+                continue
             if _is_spam(title, summary):
                 continue
+
+            image = _extract_image(entry)
 
             articles.append({
                 "title": title,
@@ -76,6 +160,9 @@ def fetch_articles(hours: int = 24) -> list[dict]:
                 "summary": summary[:500],
                 "source": source_name,
                 "published": published,
+                "image": image,
+                "hn_points": hn_points,
+                "hn_comments": hn_comments,
             })
 
     articles.sort(key=lambda a: a["published"], reverse=True)
