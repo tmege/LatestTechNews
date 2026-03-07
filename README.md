@@ -15,11 +15,13 @@ Automated tech news aggregator that fetches, classifies, summarizes and posts th
                             |
                       Paywall detection
                             |
+                    Empty content scraping (fallback)
+                            |
                     Classification (keywords)
                             |
-                    AI Summarization (Ollama)
+                    AI Summarization (Ollama) + empty filter
                             |
-                    Discord (3 category channels)
+                    Discord (3 category channels, empty filtered)
                             |
                     Score & store articles
                             |
@@ -122,6 +124,15 @@ Articles are classified using keyword matching against title + summary:
 - When an article matches multiple categories, the one with the highest keyword score wins
 - Unclassified articles default to `tech-hardware`
 
+### Empty Content Handling
+
+Some sources (especially Hacker News) provide RSS entries with minimal or no summary — just metadata like points and comment counts. The system handles this with 3 layers of protection:
+
+1. **Page scraping** — When an RSS summary is shorter than 50 characters, the system fetches the article page and extracts text from `<p>` tags (timeout: 10s, capped at 500 chars)
+2. **Pre-summarization filter** — If the summary is still under 30 characters after scraping, the Ollama call is skipped entirely (no wasted compute)
+3. **Post-summarization filter** — If Ollama returns a "no content" response (e.g. "Unfortunately, it seems there is no content provided..."), the summary is discarded
+4. **Discord filter** — Articles with no usable summary (`ai_summary` and `summary` both empty) are excluded from Discord posts
+
 ### Spam Filtering
 
 Articles are automatically filtered out if their title or summary matches promotional patterns: coupons, promo codes, discounts, deals, sponsored content.
@@ -210,7 +221,7 @@ LatestTechNews-repo/
 ├── main.py           # Cron 1: fetch, classify, summarize, post, score
 ├── resume.py         # Cron 2: daily digest from scored articles
 ├── config.py         # Configuration (feeds, keywords, webhooks, credibility)
-├── feeds.py          # RSS fetching, spam filtering, HN engagement extraction
+├── feeds.py          # RSS fetching, spam filtering, HN engagement extraction, page scraping fallback
 ├── classifier.py     # Keyword-based classification (exposes keyword_score)
 ├── dedup.py          # Title similarity dedup + coverage counting
 ├── summarizer.py     # Ollama-powered summarization + digest generation

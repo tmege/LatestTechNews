@@ -72,6 +72,35 @@ def _clean_summary(summary: str) -> str:
     return summary
 
 
+_MIN_SUMMARY_LENGTH = 50  # below this, try scraping the article page
+
+_SCRAPE_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (compatible; LatestTechNews/1.0)",
+}
+_P_TAG_RE = re.compile(r"<p[^>]*>(.*?)</p>", re.DOTALL | re.IGNORECASE)
+
+
+def _scrape_excerpt(url: str) -> str:
+    """Fetch the article page and extract a text excerpt from <p> tags.
+
+    Returns up to 500 characters of body text, or empty string on failure.
+    """
+    try:
+        resp = requests.get(url, headers=_SCRAPE_HEADERS, timeout=10)
+        resp.raise_for_status()
+        paragraphs = _P_TAG_RE.findall(resp.text)
+        text_parts = [_strip_html(p).strip() for p in paragraphs]
+        # Keep only paragraphs with real content (>40 chars filters nav/footer junk)
+        text_parts = [p for p in text_parts if len(p) > 40]
+        body = " ".join(text_parts)
+        if body:
+            log.info("Scraped excerpt for: %s", url)
+            return body[:500]
+    except Exception:
+        log.debug("Failed to scrape excerpt from %s", url, exc_info=True)
+    return ""
+
+
 def _extract_image(entry) -> str:
     """Try to extract an image URL from an RSS entry."""
     # media:content or media:thumbnail
@@ -151,6 +180,12 @@ def fetch_articles(hours: int = 24) -> list[dict]:
                 continue
             if _is_spam(title, summary):
                 continue
+
+            # If RSS summary is too short, try scraping the article page
+            if len(summary) < _MIN_SUMMARY_LENGTH:
+                scraped = _scrape_excerpt(link)
+                if scraped:
+                    summary = sanitize_for_discord(scraped)
 
             image = _extract_image(entry)
 

@@ -13,16 +13,40 @@ _SYSTEM_PROMPT = (
     "Be factual, neutral, and informative. No opinions."
 )
 
+_MIN_CONTENT_LENGTH = 30  # skip Ollama if summary is shorter than this
+
+# Phrases that indicate the LLM couldn't summarize (empty/paywalled content)
+_NO_CONTENT_PHRASES = [
+    "no content provided",
+    "no content available",
+    "article appears to be incomplete",
+    "unable to summarize",
+    "unfortunately, it seems there is no",
+    "no article content",
+    "i cannot summarize",
+    "there is no content",
+    "the article is empty",
+    "no text to summarize",
+]
+
 
 def summarize(article: dict) -> str:
     """Return a short AI-generated summary for a single article.
 
     Falls back to a truncated raw summary if Ollama is unavailable.
     """
+    raw_summary = article.get("summary", "").strip()
+
+    # Pre-filter: skip Ollama if there's not enough content to summarize
+    if len(raw_summary) < _MIN_CONTENT_LENGTH:
+        log.info("Skipping summarization for '%s': summary too short (%d chars)",
+                 article["title"], len(raw_summary))
+        return raw_summary
+
     prompt = (
         f"Title: {article['title']}\n"
         f"Source: {article['source']}\n"
-        f"Content: {article['summary']}\n\n"
+        f"Content: {raw_summary}\n\n"
         "Summary:"
     )
 
@@ -42,10 +66,19 @@ def summarize(article: dict) -> str:
             timeout=60,
         )
         resp.raise_for_status()
-        return resp.json().get("response", "").strip()
+        ai_text = resp.json().get("response", "").strip()
+
+        # Post-filter: detect LLM "no content" responses
+        ai_lower = ai_text.lower()
+        if any(phrase in ai_lower for phrase in _NO_CONTENT_PHRASES):
+            log.warning("LLM returned 'no content' response for '%s' — discarding",
+                        article["title"])
+            return ""
+
+        return ai_text
     except Exception:
         log.warning("Ollama summarization failed for '%s'", article["title"], exc_info=True)
-        fallback = article.get("summary", "")
+        fallback = raw_summary
         if len(fallback) > 200:
             fallback = fallback[:200] + "..."
         return fallback

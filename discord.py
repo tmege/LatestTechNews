@@ -82,6 +82,16 @@ def send_to_discord(
     today = datetime.now(timezone.utc).strftime("%d %B %Y")
     header = f"**{label} — {today}**\n\n"
 
+    # Filter out articles with no usable content
+    articles = [
+        a for a in articles
+        if (a.get("ai_summary") or a.get("summary", "")).strip()
+    ]
+
+    if not articles:
+        log.info("No articles with content for %s — skipping.", category)
+        return
+
     # Build all formatted articles
     formatted = []
     for i, article in enumerate(articles[:MAX_ARTICLES_PER_CATEGORY], 1):
