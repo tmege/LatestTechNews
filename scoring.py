@@ -4,6 +4,7 @@ import json
 import math
 import logging
 from datetime import datetime, timezone, timedelta
+from typing import Dict, List, Optional
 from config import (
     SOURCE_CREDIBILITY,
     SCORED_ARTICLES_FILE,
@@ -36,14 +37,14 @@ def _get_credibility(source_name: str) -> float:
     return 0.5  # unknown source default
 
 
-def _recency_factor(published: datetime, now: datetime | None = None) -> float:
+def _recency_factor(published: datetime, now: Optional[datetime] = None) -> float:
     """Exponential decay: 1.0 if just published, ~0.3 after 24h."""
     now = now or datetime.now(timezone.utc)
     age_hours = max((now - published).total_seconds() / 3600, 0)
     return math.exp(-0.05 * age_hours)
 
 
-def calculate_scores(articles: list[dict]) -> list[dict]:
+def calculate_scores(articles: List[dict]) -> List[dict]:
     """Compute and attach ``relevance_score`` to each article."""
     now = datetime.now(timezone.utc)
 
@@ -82,7 +83,7 @@ def _serialize_article(article: dict) -> dict:
     return d
 
 
-def _load_scored() -> list[dict]:
+def _load_scored() -> List[dict]:
     """Load the scored articles database."""
     if not SCORED_ARTICLES_FILE.exists():
         return []
@@ -93,7 +94,7 @@ def _load_scored() -> list[dict]:
         return []
 
 
-def store_scored_articles(articles: list[dict]) -> None:
+def store_scored_articles(articles: List[dict]) -> None:
     """Append scored articles to the database and purge old entries."""
     existing = _load_scored()
 
@@ -114,7 +115,7 @@ def store_scored_articles(articles: list[dict]) -> None:
     log.info("Scored articles DB: %d entries.", len(existing))
 
 
-def load_top_articles(hours: int = 24, limit: int = 20) -> list[dict]:
+def load_top_articles(hours: int = 24, limit: int = 20) -> List[dict]:
     """Load the top-scored articles from the last *hours* hours."""
     all_articles = _load_scored()
 
