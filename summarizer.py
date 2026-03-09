@@ -1,8 +1,8 @@
-"""Summarize articles using a local Ollama LLM."""
+"""Summarize articles using the Claude API (Anthropic)."""
 
 import logging
-import requests
-from config import OLLAMA_URL, OLLAMA_MODEL
+import anthropic
+from config import CLAUDE_API_KEY, CLAUDE_MODEL
 
 log = logging.getLogger("technews")
 
@@ -10,10 +10,12 @@ _SYSTEM_PROMPT = (
     "You are a tech news summarizer. "
     "Summarize the following article in 4-6 sentences. "
     "Cover the key facts, context, and why it matters. "
-    "Be factual, neutral, and informative. No opinions."
+    "Be factual, neutral, and informative. No opinions. "
+    "Use formal academic English. "
+    "Start directly with the summary text. Do not include any heading or label like 'Summary'."
 )
 
-_MIN_CONTENT_LENGTH = 30  # skip Ollama if summary is shorter than this
+_MIN_CONTENT_LENGTH = 30  # skip API call if summary is shorter than this
 
 # Phrases that indicate the LLM couldn't summarize (empty/paywalled content)
 _NO_CONTENT_PHRASES = [
@@ -29,55 +31,53 @@ _NO_CONTENT_PHRASES = [
     "no text to summarize",
 ]
 
+client = anthropic.Anthropic(api_key=CLAUDE_API_KEY)
+
 
 def summarize(article: dict) -> str:
     """Return a short AI-generated summary for a single article.
 
-    Falls back to a truncated raw summary if Ollama is unavailable.
+    Falls back to a truncated raw summary if the Claude API is unavailable.
     """
     raw_summary = article.get("summary", "").strip()
 
-    # Pre-filter: skip Ollama if there's not enough content to summarize
+    # Pre-filter: skip API call if there's not enough content to summarize
     if len(raw_summary) < _MIN_CONTENT_LENGTH:
-        log.info("Skipping summarization for '%s': summary too short (%d chars)",
-                 article["title"], len(raw_summary))
+        log.info("Skipping summarization: summary too short (%d chars)", len(raw_summary))
         return raw_summary
 
+    # Cap content size to control API costs
+    title = article.get("title", "")[:300]
+    source = article.get("source", "")[:200]
+    content = raw_summary[:2000]
+
     prompt = (
-        f"Title: {article['title']}\n"
-        f"Source: {article['source']}\n"
-        f"Content: {raw_summary}\n\n"
+        f"Title: {title}\n"
+        f"Source: {source}\n"
+        f"Content: {content}\n\n"
         "Summary:"
     )
 
     try:
-        resp = requests.post(
-            f"{OLLAMA_URL}/api/generate",
-            json={
-                "model": OLLAMA_MODEL,
-                "system": _SYSTEM_PROMPT,
-                "prompt": prompt,
-                "stream": False,
-                "options": {
-                    "temperature": 0.3,
-                    "num_predict": 512,
-                },
-            },
+        message = client.messages.create(
+            model=CLAUDE_MODEL,
+            system=_SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.3,
+            max_tokens=512,
             timeout=60,
         )
-        resp.raise_for_status()
-        ai_text = resp.json().get("response", "").strip()
+        ai_text = message.content[0].text.strip()
 
         # Post-filter: detect LLM "no content" responses
         ai_lower = ai_text.lower()
         if any(phrase in ai_lower for phrase in _NO_CONTENT_PHRASES):
-            log.warning("LLM returned 'no content' response for '%s' — discarding",
-                        article["title"])
+            log.warning("LLM returned 'no content' response — discarding")
             return ""
 
         return ai_text
     except Exception:
-        log.warning("Ollama summarization failed for '%s'", article["title"], exc_info=True)
+        log.warning("Claude summarization failed for an article")
         fallback = raw_summary
         if len(fallback) > 200:
             fallback = fallback[:200] + "..."
@@ -92,20 +92,19 @@ def summarize_articles(articles: list[dict]) -> list[dict]:
 
 
 _RESUME_SYSTEM_PROMPT = (
-    "Tu es un rédacteur de résumé tech quotidien. "
-    "À partir de la liste d'articles ci-dessous, rédige un résumé concis en français. "
-    "Organise par thème (IA, Crypto/Finance, Tech/Hardware). "
-    "Chaque article résumé en 1-2 lignes max. "
-    "Le résumé total doit faire entre 20 et 50 lignes. "
-    "Sois factuel, neutre et informatif. Pas d'opinions."
+    "You are a daily tech news digest writer. "
+    "From the list of articles below, write a concise digest in formal academic English. "
+    "Organize by theme with bold headers: **AI**, **Crypto/Finance**, **Tech/Hardware**. "
+    "Use bullet points (•) for each article, one bullet per article, 1-2 lines max each. "
+    "Be factual, neutral, and informative. No opinions."
 )
 
 
 def generate_daily_resume(articles: list[dict]) -> str:
     """Generate a condensed daily digest from a list of articles.
 
-    Uses Ollama to produce a ~20-50 line summary in French.
-    Falls back to a simple bullet-point list if Ollama is unavailable.
+    Uses Claude API to produce a ~20-50 line summary in French.
+    Falls back to a simple bullet-point list if the API is unavailable.
     """
     # Build article list for the prompt
     lines = []
@@ -116,24 +115,17 @@ def generate_daily_resume(articles: list[dict]) -> str:
     prompt = "\n".join(lines)
 
     try:
-        resp = requests.post(
-            f"{OLLAMA_URL}/api/generate",
-            json={
-                "model": OLLAMA_MODEL,
-                "system": _RESUME_SYSTEM_PROMPT,
-                "prompt": prompt,
-                "stream": False,
-                "options": {
-                    "temperature": 0.3,
-                    "num_predict": 2048,
-                },
-            },
+        message = client.messages.create(
+            model=CLAUDE_MODEL,
+            system=_RESUME_SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.3,
+            max_tokens=2048,
             timeout=120,
         )
-        resp.raise_for_status()
-        return resp.json().get("response", "").strip()
+        return message.content[0].text.strip()
     except Exception:
-        log.warning("Ollama daily résumé generation failed", exc_info=True)
+        log.warning("Claude daily digest generation failed")
         # Fallback: simple bullet list
         fallback_lines = []
         for a in articles:

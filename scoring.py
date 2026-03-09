@@ -84,11 +84,19 @@ def _serialize_article(article: dict) -> dict:
 
 
 def _load_scored() -> List[dict]:
-    """Load the scored articles database."""
+    """Load the scored articles database with schema validation."""
     if not SCORED_ARTICLES_FILE.exists():
         return []
     try:
-        return json.loads(SCORED_ARTICLES_FILE.read_text())
+        data = json.loads(SCORED_ARTICLES_FILE.read_text())
+        if not isinstance(data, list):
+            log.warning("Invalid scored articles format, starting fresh.")
+            return []
+        validated = [a for a in data if isinstance(a, dict) and "link" in a]
+        if len(validated) != len(data):
+            log.warning("Dropped %d invalid entries from scored articles.",
+                        len(data) - len(validated))
+        return validated
     except (json.JSONDecodeError, OSError):
         log.warning("Corrupted scored articles file, starting fresh.")
         return []

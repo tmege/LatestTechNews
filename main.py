@@ -35,7 +35,7 @@ def main() -> int:
     parser.add_argument(
         "--no-summary",
         action="store_true",
-        help="Skip AI summarization (faster, no Ollama needed).",
+        help="Skip AI summarization (faster, no Claude API needed).",
     )
     parser.add_argument(
         "--hours",
@@ -85,7 +85,7 @@ def main() -> int:
 
     # 5. Summarize
     if not args.no_summary:
-        log.info("[5/7] Summarizing with Ollama...")
+        log.info("[5/7] Summarizing with Claude API...")
         for cat in grouped:
             grouped[cat] = summarize_articles(grouped[cat])
     else:

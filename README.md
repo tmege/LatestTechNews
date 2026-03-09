@@ -5,7 +5,7 @@ Automated tech news aggregator that fetches, classifies, summarizes and posts th
 ## How It Works
 
 ```
-                    CRON 1 (every 4h): main.py
+                    CRON 1 (every 6h): main.py
                     ========================
                     RSS Feeds (16 sources)
                             |
@@ -19,7 +19,7 @@ Automated tech news aggregator that fetches, classifies, summarizes and posts th
                             |
                     Classification (keywords)
                             |
-                    AI Summarization (Ollama) + empty filter
+                    AI Summarization (Claude API) + empty filter
                             |
                     Discord (3 category channels, empty filtered)
                             |
@@ -31,7 +31,7 @@ Automated tech news aggregator that fetches, classifies, summarizes and posts th
                     ==================================
                     Load top 20 by relevance score
                             |
-                    Generate condensed digest (Ollama)
+                    Generate condensed digest (Claude API)
                             |
                     Discord (#daily-resume)
 ```
@@ -40,7 +40,7 @@ Automated tech news aggregator that fetches, classifies, summarizes and posts th
 
 | Cron | Schedule | Script | Purpose |
 |------|----------|--------|---------|
-| **Cron 1** | Every 4 hours | `main.py` | Fetch, classify, summarize, post to category channels, score & store |
+| **Cron 1** | Every 6 hours | `main.py` | Fetch, classify, summarize, post to category channels, score & store |
 | **Cron 2** | Daily at 20:00 | `resume.py` | Read scored articles, pick top 20, generate digest, post to résumé channel |
 
 This separation ensures the daily digest reflects a full day of coverage with the most relevant articles ranked by a composite score.
@@ -129,8 +129,8 @@ Articles are classified using keyword matching against title + summary:
 Some sources (especially Hacker News) provide RSS entries with minimal or no summary — just metadata like points and comment counts. The system handles this with 3 layers of protection:
 
 1. **Page scraping** — When an RSS summary is shorter than 50 characters, the system fetches the article page and extracts text from `<p>` tags (timeout: 10s, capped at 500 chars)
-2. **Pre-summarization filter** — If the summary is still under 30 characters after scraping, the Ollama call is skipped entirely (no wasted compute)
-3. **Post-summarization filter** — If Ollama returns a "no content" response (e.g. "Unfortunately, it seems there is no content provided..."), the summary is discarded
+2. **Pre-summarization filter** — If the summary is still under 30 characters after scraping, the Claude API call is skipped entirely (no wasted compute)
+3. **Post-summarization filter** — If Claude returns a "no content" response (e.g. "Unfortunately, it seems there is no content provided..."), the summary is discarded
 4. **Discord filter** — Articles with no usable summary (`ai_summary` and `summary` both empty) are excluded from Discord posts
 
 ### Spam Filtering
@@ -145,10 +145,10 @@ When the same story is covered by multiple sources, duplicates are detected usin
 
 - **Python 3.9+**
 - **feedparser** — RSS feed parsing
-- **requests** — HTTP client (Discord webhooks, Ollama API)
+- **requests** — HTTP client (Discord webhooks)
 - **python-dateutil** — Robust date parsing from RSS feeds
 - **python-dotenv** — Environment variable management
-- **Ollama** — Local LLM for article summarization (Llama 3.1 8B recommended)
+- **anthropic** — Claude API SDK for article summarization (Haiku 4.5)
 
 ## Setup
 
@@ -158,12 +158,12 @@ When the same story is covered by multiple sources, duplicates are detected usin
 pip install -r requirements.txt
 ```
 
-### 2. Install Ollama
+### 2. Configure your Claude API key
+
+Get your API key from [console.anthropic.com](https://console.anthropic.com/) and add it to your `.env` file:
 
 ```bash
-brew install ollama
-ollama serve           # start the server
-ollama pull llama3.1   # download the model (~4.7 GB)
+CLAUDE_API_KEY=sk-ant-your-key-here
 ```
 
 ### 3. Configure Discord webhooks
@@ -185,7 +185,7 @@ cp .env.example .env
 # === CRON 1: Fetch, classify, post & score ===
 python3 main.py                        # full run
 python3 main.py --dry-run              # test without posting
-python3 main.py --no-summary           # skip Ollama
+python3 main.py --no-summary           # skip Claude API
 python3 main.py --hours 48 -v          # last 48h, debug
 
 # === CRON 2: Daily digest ===
@@ -205,14 +205,14 @@ crontab -e
 Add:
 
 ```cron
-# Fetch & post every 4 hours
-0 */4 * * * cd /path/to/LatestTechNews-repo && /usr/bin/python3 main.py >> /tmp/technews.log 2>&1
+# Fetch & post every 6 hours
+0 */6 * * * cd /path/to/LatestTechNews-repo && /usr/bin/python3 main.py >> /tmp/technews.log 2>&1
 
 # Daily digest at 20:00 (end of day for max coverage)
 0 20 * * * cd /path/to/LatestTechNews-repo && /usr/bin/python3 resume.py >> /tmp/technews-resume.log 2>&1
 ```
 
-Make sure Ollama is running (`ollama serve`) or add it to your Mac login items (**System Settings > General > Login Items**) for automatic startup.
+Make sure your `CLAUDE_API_KEY` is set in your `.env` file.
 
 ## Project Structure
 
@@ -224,7 +224,7 @@ LatestTechNews-repo/
 ├── feeds.py          # RSS fetching, spam filtering, HN engagement extraction, page scraping fallback
 ├── classifier.py     # Keyword-based classification (exposes keyword_score)
 ├── dedup.py          # Title similarity dedup + coverage counting
-├── summarizer.py     # Ollama-powered summarization + digest generation
+├── summarizer.py     # Claude API-powered summarization + digest generation
 ├── scoring.py        # Relevance scoring engine + JSON storage
 ├── discord.py        # Discord formatting, rate limiting, webhook delivery
 ├── history.py        # Posted-article tracking (7-day retention)

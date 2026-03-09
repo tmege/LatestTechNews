@@ -1,9 +1,12 @@
 """Fetch and filter RSS feeds."""
 
 import re
+import time
 import logging
+import ipaddress
 import feedparser
 import requests
+from urllib.parse import urlparse
 from datetime import datetime, timezone, timedelta
 from dateutil import parser as dateparser
 from config import RSS_FEEDS
@@ -80,13 +83,37 @@ _SCRAPE_HEADERS = {
 _P_TAG_RE = re.compile(r"<p[^>]*>(.*?)</p>", re.DOTALL | re.IGNORECASE)
 
 
+def _is_safe_url(url: str) -> bool:
+    """Reject URLs targeting private/internal networks (SSRF protection)."""
+    try:
+        parsed = urlparse(url)
+        if parsed.scheme not in ("http", "https"):
+            return False
+        hostname = parsed.hostname or ""
+        if hostname in ("localhost", "0.0.0.0"):
+            return False
+        try:
+            addr = ipaddress.ip_address(hostname)
+            if addr.is_private or addr.is_loopback or addr.is_link_local:
+                return False
+        except ValueError:
+            pass  # hostname is a domain name, not an IP — that's fine
+        return True
+    except Exception:
+        return False
+
+
 def _scrape_excerpt(url: str) -> str:
     """Fetch the article page and extract a text excerpt from <p> tags.
 
     Returns up to 500 characters of body text, or empty string on failure.
     """
+    if not _is_safe_url(url):
+        log.warning("Blocked scrape of unsafe URL: %s", url)
+        return ""
     try:
-        resp = requests.get(url, headers=_SCRAPE_HEADERS, timeout=10)
+        resp = requests.get(url, headers=_SCRAPE_HEADERS, timeout=10,
+                            allow_redirects=False)
         resp.raise_for_status()
         paragraphs = _P_TAG_RE.findall(resp.text)
         text_parts = [_strip_html(p).strip() for p in paragraphs]
@@ -97,7 +124,7 @@ def _scrape_excerpt(url: str) -> str:
             log.info("Scraped excerpt for: %s", url)
             return body[:500]
     except Exception:
-        log.debug("Failed to scrape excerpt from %s", url, exc_info=True)
+        log.debug("Failed to scrape excerpt for an article")
     return ""
 
 
@@ -141,15 +168,19 @@ def fetch_articles(hours: int = 24) -> list[dict]:
             resp = requests.get(feed_url, timeout=_FEED_TIMEOUT)
             resp.raise_for_status()
             if len(resp.content) > _FEED_MAX_SIZE:
-                log.warning("Feed too large (%d bytes), skipping: %s",
-                            len(resp.content), feed_url)
+                log.warning("Feed too large, skipping: %s", feed_url)
                 continue
             feed = feedparser.parse(resp.content)
         except Exception:
-            log.warning("Failed to fetch %s", feed_url, exc_info=True)
+            log.warning("Failed to fetch feed: %s", feed_url)
+            time.sleep(2)
             continue
 
         source_name = getattr(feed.feed, "title", feed_url)
+        source_name = "".join(c for c in source_name if c.isprintable() or c in "\n\t ")
+        source_name = source_name.strip()[:200]
+
+        time.sleep(0.5)  # stagger requests to avoid rate-limiting
 
         for entry in feed.entries:
             published_raw = entry.get("published") or entry.get("updated")
@@ -176,8 +207,11 @@ def fetch_articles(hours: int = 24) -> list[dict]:
 
             if not title or not link:
                 continue
-            if not link.startswith(("https://", "http://")):
-                continue
+            if not link.startswith("https://"):
+                if link.startswith("http://"):
+                    link = "https://" + link[7:]
+                else:
+                    continue
             if _is_spam(title, summary):
                 continue
 

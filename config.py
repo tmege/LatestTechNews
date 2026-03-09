@@ -19,10 +19,10 @@ WEBHOOKS: dict[str, str] = {
 }
 
 # ---------------------------------------------------------------------------
-# Ollama (local LLM)
+# Claude API (Anthropic)
 # ---------------------------------------------------------------------------
-OLLAMA_URL: str = os.getenv("OLLAMA_URL", "http://localhost:11434")
-OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "llama3.1")
+CLAUDE_API_KEY: str = os.getenv("CLAUDE_API_KEY", "")
+CLAUDE_MODEL: str = os.getenv("CLAUDE_MODEL", "claude-haiku-4-5-20251001")
 
 # ---------------------------------------------------------------------------
 # RSS feeds — curated for reliability (see README for credibility scores)
@@ -91,7 +91,7 @@ CATEGORY_LABELS: dict[str, str] = {
     "ai-ml": "🤖 AI & Machine Learning",
     "finance-crypto": "💰 Finance & Crypto",
     "tech-hardware": "🔧 Tech & Hardware",
-    "daily-resume": "📰 Résumé du jour",
+    "daily-resume": "📰 Daily Digest",
 }
 
 # Max articles included in the daily résumé

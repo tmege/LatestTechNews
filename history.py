@@ -12,11 +12,15 @@ _RETENTION_DAYS = 7  # purge entries older than this
 
 
 def _load() -> dict[str, str]:
-    """Load history: {link: iso_timestamp}."""
+    """Load history: {link: iso_timestamp} with validation."""
     if not _HISTORY_FILE.exists():
         return {}
     try:
-        return json.loads(_HISTORY_FILE.read_text())
+        data = json.loads(_HISTORY_FILE.read_text())
+        if not isinstance(data, dict):
+            log.warning("Invalid history format, starting fresh.")
+            return {}
+        return {k: v for k, v in data.items() if isinstance(k, str) and isinstance(v, str)}
     except (json.JSONDecodeError, OSError):
         log.warning("Corrupted history file, starting fresh.")
         return {}

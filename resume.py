@@ -42,7 +42,7 @@ def main() -> int:
     parser.add_argument(
         "--no-summary",
         action="store_true",
-        help="Skip Ollama — use simple bullet list instead.",
+        help="Skip Claude API — use simple bullet list instead.",
     )
     parser.add_argument(
         "--hours",

@@ -19,11 +19,10 @@ def _format_article(index: int, article: dict) -> str:
     source = article["source"]
     summary = article.get("ai_summary") or article.get("summary", "")
 
-    return (
-        f"**{index}. {title}**\n"
-        f"{summary}\n"
-        f"Source: {source} | [Lire l'article]({link})\n"
-    )
+    text = f"**{index}.** [{title}]({link}) — *{source}*\n"
+    if summary.strip():
+        text += f"{summary}\n"
+    return text
 
 
 def _post_messages(
@@ -40,23 +39,30 @@ def _post_messages(
         try:
             resp = requests.post(
                 webhook_url,
-                json={"content": msg},
+                json={"content": msg, "flags": 4},
                 timeout=10,
             )
-            # Honor Discord rate limits
-            if resp.status_code == 429:
-                retry_after = resp.json().get("retry_after", 5)
-                log.warning("Rate limited, retrying in %.1fs", retry_after)
-                time.sleep(retry_after)
+            # Honor Discord rate limits with exponential backoff
+            for attempt in range(3):
+                if resp.status_code != 429:
+                    break
+                try:
+                    retry_after = float(resp.json().get("retry_after", 5))
+                except (ValueError, KeyError):
+                    retry_after = 5.0
+                wait = retry_after * (2 ** attempt)
+                log.warning("Rate limited (attempt %d/3), retrying in %.1fs",
+                            attempt + 1, wait)
+                time.sleep(wait)
                 resp = requests.post(
                     webhook_url,
-                    json={"content": msg},
+                    json={"content": msg, "flags": 4},
                     timeout=10,
                 )
             resp.raise_for_status()
             posted += 1
-        except requests.exceptions.RequestException as exc:
-            log.error("Failed to post to %s: %s", label, exc)
+        except requests.exceptions.RequestException:
+            log.error("Failed to post to Discord channel: %s", label)
             return posted
         time.sleep(_RATE_LIMIT_DELAY)
     return posted
@@ -81,16 +87,6 @@ def send_to_discord(
     label = CATEGORY_LABELS.get(category, category)
     today = datetime.now(timezone.utc).strftime("%d %B %Y")
     header = f"**{label} — {today}**\n\n"
-
-    # Filter out articles with no usable content
-    articles = [
-        a for a in articles
-        if (a.get("ai_summary") or a.get("summary", "")).strip()
-    ]
-
-    if not articles:
-        log.info("No articles with content for %s — skipping.", category)
-        return
 
     # Build all formatted articles
     formatted = []
