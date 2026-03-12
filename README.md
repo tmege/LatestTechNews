@@ -205,11 +205,15 @@ crontab -e
 Add:
 
 ```cron
-# Fetch & post every 6 hours
-0 */6 * * * cd /path/to/LatestTechNews-repo && /usr/bin/python3 main.py >> /tmp/technews.log 2>&1
+# Fetch & post 1h30 before US market open (8:00 AM EDT = 12:00 UTC)
+0 12 * * 1-5 cd /path/to/LatestTechNews-repo && /usr/bin/python3 main.py >> /tmp/technews.log 2>&1
 
-# Daily digest at 20:00 (end of day for max coverage)
-0 20 * * * cd /path/to/LatestTechNews-repo && /usr/bin/python3 resume.py >> /tmp/technews-resume.log 2>&1
+# Fetch & post 30min after US market close (4:30 PM EDT = 20:30 UTC)
+30 20 * * 1-5 cd /path/to/LatestTechNews-repo && /usr/bin/python3 main.py >> /tmp/technews.log 2>&1
+
+# Digest 5min after each news run
+5 12 * * 1-5 cd /path/to/LatestTechNews-repo && /usr/bin/python3 resume.py >> /tmp/technews-resume.log 2>&1
+35 20 * * 1-5 cd /path/to/LatestTechNews-repo && /usr/bin/python3 resume.py >> /tmp/technews-resume.log 2>&1
 ```
 
 Make sure your `CLAUDE_API_KEY` is set in your `.env` file.
