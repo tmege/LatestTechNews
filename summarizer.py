@@ -3,6 +3,7 @@
 import logging
 import anthropic
 from config import CLAUDE_API_KEY, CLAUDE_MODEL
+from feeds import scrape_full_content
 
 log = logging.getLogger("technews")
 
@@ -37,19 +38,23 @@ client = anthropic.Anthropic(api_key=CLAUDE_API_KEY)
 def summarize(article: dict) -> str:
     """Return a short AI-generated summary for a single article.
 
+    Fetches the full article content for better summarization quality.
     Falls back to a truncated raw summary if the Claude API is unavailable.
     """
     raw_summary = article.get("summary", "").strip()
 
+    # Try to get full article content for better summarization
+    full_content = scrape_full_content(article.get("link", ""))
+    content_source = full_content if full_content else raw_summary
+
     # Pre-filter: skip API call if there's not enough content to summarize
-    if len(raw_summary) < _MIN_CONTENT_LENGTH:
-        log.info("Skipping summarization: summary too short (%d chars)", len(raw_summary))
+    if len(content_source) < _MIN_CONTENT_LENGTH:
+        log.info("Skipping summarization: content too short (%d chars)", len(content_source))
         return raw_summary
 
-    # Cap content size to control API costs
     title = article.get("title", "")[:300]
     source = article.get("source", "")[:200]
-    content = raw_summary[:2000]
+    content = content_source[:5000]
 
     prompt = (
         f"Title: {title}\n"

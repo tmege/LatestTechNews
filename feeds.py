@@ -6,6 +6,7 @@ import logging
 import ipaddress
 import feedparser
 import requests
+import trafilatura
 from urllib.parse import urlparse
 from datetime import datetime, timezone, timedelta
 from dateutil import parser as dateparser
@@ -103,29 +104,35 @@ def _is_safe_url(url: str) -> bool:
         return False
 
 
-def _scrape_excerpt(url: str) -> str:
-    """Fetch the article page and extract a text excerpt from <p> tags.
+def scrape_full_content(url: str, max_chars: int = 5000) -> str:
+    """Fetch full article content using trafilatura extraction.
 
-    Returns up to 500 characters of body text, or empty string on failure.
+    Returns clean extracted text up to *max_chars*, or empty string on failure.
     """
     if not _is_safe_url(url):
         log.warning("Blocked scrape of unsafe URL: %s", url)
         return ""
     try:
-        resp = requests.get(url, headers=_SCRAPE_HEADERS, timeout=10,
-                            allow_redirects=False)
+        resp = requests.get(url, headers=_SCRAPE_HEADERS, timeout=15)
+        # Validate final URL after redirects (SSRF protection)
+        if resp.url != url and not _is_safe_url(resp.url):
+            log.warning("Blocked redirect to unsafe URL: %s", resp.url)
+            return ""
         resp.raise_for_status()
-        paragraphs = _P_TAG_RE.findall(resp.text)
-        text_parts = [_strip_html(p).strip() for p in paragraphs]
-        # Keep only paragraphs with real content (>40 chars filters nav/footer junk)
-        text_parts = [p for p in text_parts if len(p) > 40]
-        body = " ".join(text_parts)
-        if body:
-            log.info("Scraped excerpt for: %s", url)
-            return body[:500]
+        text = trafilatura.extract(
+            resp.text, include_comments=False, include_tables=False,
+        )
+        if text:
+            log.info("Extracted full content (%d chars) for: %s", len(text), url)
+            return text[:max_chars]
     except Exception:
-        log.debug("Failed to scrape excerpt for an article")
+        log.debug("Failed to extract full content for an article")
     return ""
+
+
+def _scrape_excerpt(url: str) -> str:
+    """Fetch an article page and return a short text excerpt (up to 500 chars)."""
+    return scrape_full_content(url, max_chars=500)
 
 
 def _extract_image(entry) -> str:

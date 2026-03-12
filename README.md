@@ -19,6 +19,8 @@ Automated tech news aggregator that fetches, classifies, summarizes and posts th
                             |
                     Classification (keywords)
                             |
+                    Full article extraction (trafilatura)
+                            |
                     AI Summarization (Claude API) + empty filter
                             |
                     Discord (3 category channels, empty filtered)
@@ -124,12 +126,16 @@ Articles are classified using keyword matching against title + summary:
 - When an article matches multiple categories, the one with the highest keyword score wins
 - Unclassified articles default to `tech-hardware`
 
-### Empty Content Handling
+### Content Extraction
 
-Some sources (especially Hacker News) provide RSS entries with minimal or no summary — just metadata like points and comment counts. The system handles this with 3 layers of protection:
+At summarization time, the system fetches the **full article content** using [trafilatura](https://github.com/adbar/trafilatura) — a library specifically designed to extract clean text from web pages, stripping navigation, ads, and boilerplate. This provides Claude with up to **5000 characters** of actual article text instead of relying on RSS teasers.
 
-1. **Page scraping** — When an RSS summary is shorter than 50 characters, the system fetches the article page and extracts text from `<p>` tags (timeout: 10s, capped at 500 chars)
-2. **Pre-summarization filter** — If the summary is still under 30 characters after scraping, the Claude API call is skipped entirely (no wasted compute)
+For sources with minimal RSS summaries (especially Hacker News), a short excerpt is also fetched during the initial feed processing as a fallback for classification.
+
+**Empty content protection** (4 layers):
+
+1. **RSS fallback scraping** — When an RSS summary is shorter than 50 characters, trafilatura extracts a short excerpt from the article page
+2. **Pre-summarization filter** — If content is still under 30 characters after full extraction, the Claude API call is skipped entirely (no wasted compute)
 3. **Post-summarization filter** — If Claude returns a "no content" response (e.g. "Unfortunately, it seems there is no content provided..."), the summary is discarded
 4. **Discord filter** — Articles with no usable summary (`ai_summary` and `summary` both empty) are excluded from Discord posts
 
@@ -149,6 +155,7 @@ When the same story is covered by multiple sources, duplicates are detected usin
 - **python-dateutil** — Robust date parsing from RSS feeds
 - **python-dotenv** — Environment variable management
 - **anthropic** — Claude API SDK for article summarization (Haiku 4.5)
+- **trafilatura** — Full article content extraction from web pages
 
 ## Setup
 
@@ -225,7 +232,7 @@ LatestTechNews-repo/
 ├── main.py           # Cron 1: fetch, classify, summarize, post, score
 ├── resume.py         # Cron 2: daily digest from scored articles
 ├── config.py         # Configuration (feeds, keywords, webhooks, credibility)
-├── feeds.py          # RSS fetching, spam filtering, HN engagement extraction, page scraping fallback
+├── feeds.py          # RSS fetching, spam filtering, HN engagement extraction, full content extraction (trafilatura)
 ├── classifier.py     # Keyword-based classification (exposes keyword_score)
 ├── dedup.py          # Title similarity dedup + coverage counting
 ├── summarizer.py     # Claude API-powered summarization + digest generation
