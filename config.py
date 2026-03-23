@@ -27,8 +27,10 @@ CLAUDE_MODEL: str = os.getenv("CLAUDE_MODEL", "claude-haiku-4-5-20251001")
 
 # ---------------------------------------------------------------------------
 # RSS feeds — curated for reliability (see README for credibility scores)
+# Tech and geopolitics feeds are separated so each section uses only its
+# own sources (geopolitics topics are unrelated to tech/finance).
 # ---------------------------------------------------------------------------
-RSS_FEEDS: list[str] = [
+TECH_FEEDS: list[str] = [
     # --- Tier 1 (credibility 9+/10) ---
     "https://www.technologyreview.com/feed/",                    # MIT Tech Review (9.5)
     "https://feeds.arstechnica.com/arstechnica/index",           # Ars Technica (9.0)
@@ -48,6 +50,9 @@ RSS_FEEDS: list[str] = [
     # --- Tier 3 (credibility 6-7/10) — used with caution ---
     "https://www.coindesk.com/arc/outboundfeeds/rss/",           # CoinDesk (6.0)
     "https://hnrss.org/frontpage",                               # Hacker News (7.0, aggregator)
+]
+
+GEO_FEEDS: list[str] = [
     # --- Geopolitics (credibility 7-9.5/10) ---
     "https://news.google.com/rss/search?q=source:reuters+world+when:24h&hl=en-US&gl=US&ceid=US:en",  # Reuters World via Google News (9.5)
     "https://apnews.com/world-news.rss",                         # AP News (9.0)
@@ -56,6 +61,9 @@ RSS_FEEDS: list[str] = [
     "https://rss.dw.com/rdf/rss-en-all",                        # Deutsche Welle (8.0)
     "https://www.aljazeera.com/xml/rss/all.xml",                 # Al Jazeera (7.0)
 ]
+
+# Combined list for backward compatibility
+RSS_FEEDS: list[str] = TECH_FEEDS + GEO_FEEDS
 
 # ---------------------------------------------------------------------------
 # Classification keywords per category

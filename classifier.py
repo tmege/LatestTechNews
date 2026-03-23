@@ -10,12 +10,25 @@ log = logging.getLogger("technews")
 _DEFAULT_CATEGORY = "tech-hardware"
 
 
-def classify_article(article: dict) -> str:
-    """Return the best-matching category and store keyword_score on the article."""
-    text = f"{article['title']} {article['summary']}".lower()
-    scores: dict[str, int] = {}
+_TECH_CATEGORIES = {c for c in CATEGORIES if c != "geopolitics"}
 
+
+def classify_article(article: dict) -> str:
+    """Return the best-matching category and store keyword_score on the article.
+
+    Geopolitics sources are restricted to the "geopolitics" category and tech
+    sources are restricted to the tech categories — these topics are unrelated.
+    """
+    text = f"{article['title']} {article['summary']}".lower()
+    feed_group = article.get("feed_group", "tech")
+
+    # Only score categories that match the article's feed group
+    allowed = {"geopolitics"} if feed_group == "geo" else _TECH_CATEGORIES
+
+    scores: dict[str, int] = {}
     for category, keywords in CATEGORIES.items():
+        if category not in allowed:
+            continue
         score = 0
         for keyword in keywords:
             pattern = re.escape(keyword.lower())
@@ -29,7 +42,8 @@ def classify_article(article: dict) -> str:
     article["keyword_score"] = best_score
 
     if best_score == 0:
-        return _DEFAULT_CATEGORY
+        # Default within the allowed group
+        return "geopolitics" if feed_group == "geo" else _DEFAULT_CATEGORY
 
     return max(scores, key=scores.get)
 

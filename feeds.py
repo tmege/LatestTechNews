@@ -10,7 +10,7 @@ import trafilatura
 from urllib.parse import urlparse
 from datetime import datetime, timezone, timedelta
 from dateutil import parser as dateparser
-from config import RSS_FEEDS
+from config import RSS_FEEDS, GEO_FEEDS
 from googlenewsdecoder import new_decoderv1
 
 log = logging.getLogger("technews")
@@ -271,6 +271,7 @@ def fetch_articles(hours: int = 24) -> list[dict]:
                 "image": image,
                 "hn_points": hn_points,
                 "hn_comments": hn_comments,
+                "feed_group": "geo" if feed_url in GEO_FEEDS else "tech",
             })
 
     articles.sort(key=lambda a: a["published"], reverse=True)
