@@ -11,6 +11,7 @@ from urllib.parse import urlparse
 from datetime import datetime, timezone, timedelta
 from dateutil import parser as dateparser
 from config import RSS_FEEDS
+from googlenewsdecoder import new_decoderv1
 
 log = logging.getLogger("technews")
 
@@ -102,6 +103,36 @@ def _is_safe_url(url: str) -> bool:
         return True
     except Exception:
         return False
+
+
+def _resolve_google_news_url(url: str) -> str:
+    """Resolve a Google News redirect URL to the actual article URL.
+
+    Google News RSS entries link to news.google.com/rss/articles/... which
+    can't be scraped for content. This resolves them to the original source
+    URL so trafilatura can extract the article text.
+
+    Returns the original URL unchanged if resolution fails or not a Google
+    News URL.
+    """
+    try:
+        hostname = urlparse(url).hostname or ""
+    except Exception:
+        return url
+    if hostname != "news.google.com":
+        return url
+
+    try:
+        result = new_decoderv1(url, interval=None)
+        if result.get("status") and result.get("decoded_url"):
+            resolved = result["decoded_url"]
+            if _is_safe_url(resolved):
+                log.debug("Resolved Google News URL → %s", resolved[:80])
+                return resolved
+    except Exception as exc:
+        log.debug("Google News URL resolution failed: %s", exc)
+
+    return url
 
 
 def scrape_full_content(url: str, max_chars: int = 5000) -> str:
@@ -210,6 +241,7 @@ def fetch_articles(hours: int = 24) -> list[dict]:
 
             title = sanitize_for_discord(entry.get("title", "").strip())
             link = entry.get("link", "").strip()
+            link = _resolve_google_news_url(link)
             summary = sanitize_for_discord(_clean_summary(raw_summary_text))
 
             if not title or not link:

@@ -4,3 +4,4 @@ python-dateutil
 python-dotenv
 anthropic
 trafilatura
+googlenewsdecoder

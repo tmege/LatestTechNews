@@ -49,7 +49,7 @@ RSS_FEEDS: list[str] = [
     "https://www.coindesk.com/arc/outboundfeeds/rss/",           # CoinDesk (6.0)
     "https://hnrss.org/frontpage",                               # Hacker News (7.0, aggregator)
     # --- Geopolitics (credibility 7-9.5/10) ---
-    "https://news.google.com/rss/search?q=when:24h+allinurl:reuters.com/world&ceid=US:en&hl=en-US&gl=US",  # Reuters World (9.5)
+    "https://news.google.com/rss/search?q=source:reuters+world+when:24h&hl=en-US&gl=US&ceid=US:en",  # Reuters World via Google News (9.5)
     "https://apnews.com/world-news.rss",                         # AP News (9.0)
     "https://feeds.bbci.co.uk/news/world/rss.xml",               # BBC World (8.5)
     "https://www.france24.com/en/rss",                           # France 24 (8.5)
