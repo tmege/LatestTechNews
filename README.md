@@ -7,7 +7,7 @@ Automated tech news aggregator that fetches, classifies, summarizes and posts th
 ```
                     CRON 1 (every 6h): main.py
                     ========================
-                    RSS Feeds (16 sources)
+                    RSS Feeds (22 sources)
                             |
                       Spam filtering
                             |
@@ -23,7 +23,7 @@ Automated tech news aggregator that fetches, classifies, summarizes and posts th
                             |
                     AI Summarization (Claude API) + empty filter
                             |
-                    Discord (3 category channels, empty filtered)
+                    Discord (4 category channels, empty filtered)
                             |
                     Score & store articles
                             |
@@ -54,6 +54,7 @@ This separation ensures the daily digest reflects a full day of coverage with th
 | `#ai-machine-learning` | AI, LLMs, robotics, generative AI, OpenAI, Anthropic, DeepMind | Purple |
 | `#finance-crypto` | Crypto, blockchain, fintech, funding rounds, IPOs, regulation | Green |
 | `#tech-hardware` | Hardware, Big Tech, cybersecurity, semiconductors, gadgets | Blue |
+| `#geopolitics` | Geopolitics, diplomacy, conflicts, international relations | Orange |
 | `#daily-resume` | Top 20 most relevant articles of the day (scored digest) | Red |
 
 ## Relevance Scoring
@@ -104,6 +105,17 @@ All sources have been independently evaluated for credibility using [Media Bias/
 | MarkTechPost | 7.5 | AI/ML | AI research news and ML paper breakdowns. 2M+ community. |
 | Cointelegraph | 7.5 | Finance | One of the largest crypto media outlets. Daily coverage. |
 | Decrypt | 7.5 | Finance | Crypto and Web3 news. Clear editorial/opinion separation. |
+
+### Geopolitics Sources (7-9.5/10)
+
+| Source | Score | Bias (MBFC) | Notes |
+|---|:-:|---|---|
+| Reuters (via Google News) | 9.5 | Least Biased | MBFC: Very High factual reporting. Gold standard for international news. |
+| AP News | 9.0 | Left-Center | MBFC: High factual reporting. Non-profit cooperative, global bureau network. |
+| BBC World | 8.5 | Least Biased | MBFC: Mostly Factual. Comprehensive global coverage from the UK. |
+| France 24 | 8.5 | Least Biased | MBFC: High factual reporting. French international perspective. |
+| Deutsche Welle (DW) | 8.0 | Left-Center | MBFC: High factual reporting. German public international broadcaster. |
+| Al Jazeera | 7.0 | Left-Center | MBFC: Mixed factual reporting. Funded by Qatar government; useful for regional diversity. |
 
 ### Tier 3 — Moderate (6-7/10, used with caution)
 
@@ -178,7 +190,7 @@ CLAUDE_API_KEY=sk-ant-your-key-here
 In your Discord server:
 
 1. **Server Settings** > **Integrations** > **Webhooks**
-2. Create 4 webhooks, one per channel (`#ai-machine-learning`, `#finance-crypto`, `#tech-hardware`, `#daily-resume`)
+2. Create 5 webhooks, one per channel (`#ai-machine-learning`, `#finance-crypto`, `#tech-hardware`, `#geopolitics`, `#daily-resume`)
 3. Copy each webhook URL
 
 ```bash
