@@ -5,8 +5,8 @@ Automated tech news aggregator that fetches, classifies, summarizes and posts th
 ## How It Works
 
 ```
-                    CRON 1 (every 6h): main.py
-                    ========================
+                    CRON 1 (daily at 14:00 UTC): main.py
+                    ====================================
                     RSS Feeds (22 sources)
                             |
                       Spam filtering
@@ -29,8 +29,8 @@ Automated tech news aggregator that fetches, classifies, summarizes and posts th
                             |
                     .scored_articles.json
                             |
-                    CRON 2 (daily at 20:00): resume.py
-                    ==================================
+                    CRON 2 (daily at 14:05 UTC): resume.py
+                    ======================================
                     Load top 20 by relevance score
                             |
                     Generate condensed digest (Claude API)
@@ -38,14 +38,14 @@ Automated tech news aggregator that fetches, classifies, summarizes and posts th
                     Discord (#daily-resume)
 ```
 
-## Dual Cron Architecture
+## Daily Cron Architecture
 
 | Cron | Schedule | Script | Purpose |
 |------|----------|--------|---------|
-| **Cron 1** | Every 6 hours | `main.py` | Fetch, classify, summarize, post to category channels, score & store |
-| **Cron 2** | Daily at 20:00 | `resume.py` | Read scored articles, pick top 20, generate digest, post to résumé channel |
+| **Cron 1** | Daily at 14:00 UTC | `main.py` | Fetch, classify, summarize, post to category channels, score & store |
+| **Cron 2** | Daily at 14:05 UTC | `resume.py` | Read scored articles, pick top 20, generate digest, post to résumé channel |
 
-This separation ensures the daily digest reflects a full day of coverage with the most relevant articles ranked by a composite score.
+One run per day at **14:00 UTC (16:00 CEST)** — optimal timing to capture overnight Asian news, European daytime news, and US morning announcements. The digest follows 5 minutes later with the top 20 most relevant articles.
 
 ## Discord Channels
 
@@ -224,15 +224,11 @@ crontab -e
 Add:
 
 ```cron
-# Fetch & post 1h30 before US market open (8:00 AM EDT = 12:00 UTC)
-0 12 * * 1-5 cd /path/to/LatestTechNews-repo && /usr/bin/python3 main.py >> /tmp/technews.log 2>&1
+# News: daily at 14:00 UTC (16:00 CEST) — optimal for global coverage
+0 14 * * * cd /path/to/LatestTechNews-repo && /usr/bin/python3 main.py >> /tmp/technews.log 2>&1
 
-# Fetch & post 30min after US market close (4:30 PM EDT = 20:30 UTC)
-30 20 * * 1-5 cd /path/to/LatestTechNews-repo && /usr/bin/python3 main.py >> /tmp/technews.log 2>&1
-
-# Digest 5min after each news run
-5 12 * * 1-5 cd /path/to/LatestTechNews-repo && /usr/bin/python3 resume.py >> /tmp/technews-resume.log 2>&1
-35 20 * * 1-5 cd /path/to/LatestTechNews-repo && /usr/bin/python3 resume.py >> /tmp/technews-resume.log 2>&1
+# Digest: 5 min after news run
+5 14 * * * cd /path/to/LatestTechNews-repo && /usr/bin/python3 resume.py >> /tmp/technews-resume.log 2>&1
 ```
 
 Make sure your `CLAUDE_API_KEY` is set in your `.env` file.

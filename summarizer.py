@@ -99,7 +99,7 @@ def summarize_articles(articles: list[dict]) -> list[dict]:
 _RESUME_SYSTEM_PROMPT = (
     "You are a daily tech news digest writer. "
     "From the list of articles below, write a concise digest in formal academic English. "
-    "Organize by theme with bold headers: **AI**, **Crypto/Finance**, **Tech/Hardware**. "
+    "Organize by theme with bold headers: **AI**, **Crypto/Finance**, **Tech/Hardware**, **Geopolitics**. "
     "Use bullet points (•) for each article, one bullet per article, 1-2 lines max each. "
     "Be factual, neutral, and informative. No opinions."
 )
